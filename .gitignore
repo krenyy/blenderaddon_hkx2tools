@@ -1,0 +1,6 @@
+.idea
+.mypy_cache
+linux-x64
+win-x64
+addon.zip
+build.sh
