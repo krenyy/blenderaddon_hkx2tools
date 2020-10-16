@@ -126,6 +126,8 @@ class ImportCollision(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                     mesh.update()
                     bm.clear()
 
+            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+
         self.report({"INFO"}, "Collision import finished!")
         return {"FINISHED"}
 
