@@ -81,10 +81,8 @@ class ImportCollision(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         for file in self.files:
             file_path = Path(self.directory) / file.name
 
-            print("Converting meshes to PyData")
             # pydatas = Converter.Convert(str(file_path))
             pydatas = json.loads(subprocess.Popen([str(exe), str(file_path)], stdout=subprocess.PIPE).stdout.read().decode())
-            print("\n************\nDone\n************\n\n")
 
             # Remove the collection if it exists
             for col in bpy.data.collections:
@@ -99,7 +97,6 @@ class ImportCollision(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
             # Create a bmesh for convex hull creation
             bm = bmesh.new()
 
-            print("Creating meshes in Blender")
             for pydata in pydatas:
                 # Construct the blender mesh
                 # mesh = bpy.data.meshes.new(pydata.Name)
@@ -129,9 +126,7 @@ class ImportCollision(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                     mesh.update()
                     bm.clear()
 
-                print(f"{pydata['Name']} created!")
-
-            print("\n************\nFILE IMPORT FINISHED\n************\n\n")
+        self.report({"INFO"}, "Collision import finished!")
         return {"FINISHED"}
 
 
