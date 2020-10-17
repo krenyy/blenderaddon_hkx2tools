@@ -13,6 +13,7 @@ import sys
 import os
 import json
 import subprocess
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
 
 # For some reason, custom .NET Core assemblies cannot be imported via CLR in Windows
@@ -94,19 +95,22 @@ class ImportCollision(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         col.prop(self, "teraMeshTilingFloat")
         col.prop(self, "teraMeshOffsetVector")
 
+    def read_pydata(self, file):
+        file_path = Path(self.directory) / file.name
+        # return Converter.Convert(str(file_path))
+        return (file_path, json.loads(
+            subprocess.Popen([
+                str(exe),
+                str(file_path),
+                str(self.teraMeshTilingFloat),
+                *[str(f) for f in self.teraMeshOffsetVector]
+            ], stdout=subprocess.PIPE).stdout.read().decode()))
+
     def execute(self, context):
-        for file in self.files:
-            file_path = Path(self.directory) / file.name
+        p = ThreadPool(len(self.files))
+        per_file_pydatas = p.map(self.read_pydata, self.files)
 
-            # pydatas = Converter.Convert(str(file_path))
-            pydatas = json.loads(
-                subprocess.Popen([
-                    str(exe),
-                    str(file_path),
-                    str(self.teraMeshTilingFloat),
-                    *[str(f) for f in self.teraMeshOffsetVector]
-                ], stdout=subprocess.PIPE).stdout.read().decode())
-
+        for (file_path, pydatas) in per_file_pydatas:
             # Remove the collection if it exists
             for col in bpy.data.collections:
                 if file_path.stem in col.name:
