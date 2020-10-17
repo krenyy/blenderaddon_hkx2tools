@@ -5,16 +5,15 @@ bl_info = {
     "version": (1, 0, 0),
 }
 
-
 import bpy
 import bpy_extras
 import bmesh
 
 import sys
 import os
+import json
 import subprocess
 from pathlib import Path
-
 
 # For some reason, custom .NET Core assemblies cannot be imported via CLR in Windows
 """
@@ -56,12 +55,9 @@ addondir = Path(__file__).parent.absolute()
 exedir = addondir / exedir_names[platform.system()]
 exe = exedir / ("BlenderConverter" + exe_extensions[platform.system()])
 
-try:
+if platform.system() == "Linux":
     os.system(f"chmod +x {str(exe)}")
-except:
-    pass
 
-import json
 
 class ImportCollision(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     """Import BotW collision mesh files (*.hksc, *.hkrb, *.hktmrb)"""
@@ -77,12 +73,39 @@ class ImportCollision(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     )
     filter_glob: bpy.props.StringProperty(default="*.hksc;*.hkrb;*.hktmrb", options={"HIDDEN"})
 
+    # Custom attributes
+    teraMeshTilingFloat: bpy.props.FloatProperty(
+        name="TeraMesh tiling constant",
+        description="Constant, by which to tile TeraMesh files",
+        default=250.0,
+    )
+
+    teraMeshOffsetVector: bpy.props.FloatVectorProperty(
+        name="TeraMesh offset",
+        description="Vector, by which to offset TeraMesh files",
+        default=(-5000.0, 0.0, -4000.0),
+    )
+
+    def draw(self, context):
+        layout = self.layout
+
+        col = layout.column()
+        col.label(text="Import options: ")
+        col.prop(self, "teraMeshTilingFloat")
+        col.prop(self, "teraMeshOffsetVector")
+
     def execute(self, context):
         for file in self.files:
             file_path = Path(self.directory) / file.name
 
             # pydatas = Converter.Convert(str(file_path))
-            pydatas = json.loads(subprocess.Popen([str(exe), str(file_path)], stdout=subprocess.PIPE).stdout.read().decode())
+            pydatas = json.loads(
+                subprocess.Popen([
+                    str(exe),
+                    str(file_path),
+                    str(self.teraMeshTilingFloat),
+                    *[str(f) for f in self.teraMeshOffsetVector]
+                ], stdout=subprocess.PIPE).stdout.read().decode())
 
             # Remove the collection if it exists
             for col in bpy.data.collections:
@@ -125,8 +148,6 @@ class ImportCollision(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                     bm.to_mesh(mesh)
                     mesh.update()
                     bm.clear()
-
-            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
 
         self.report({"INFO"}, "Collision import finished!")
         return {"FINISHED"}
