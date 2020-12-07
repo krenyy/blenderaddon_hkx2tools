@@ -13,7 +13,7 @@ import sys
 import os
 import json
 import subprocess
-from multiprocessing.pool import ThreadPool
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # For some reason, custom .NET Core assemblies cannot be imported via CLR in Windows
@@ -95,65 +95,56 @@ class ImportCollision(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         col.prop(self, "teraMeshTilingFloat")
         col.prop(self, "teraMeshOffsetVector")
 
-    def read_pydata(self, file):
+    def convert(self, file):
         file_path = Path(self.directory) / file.name
+        print(f"Reading '{file_path}'")
         # return Converter.Convert(str(file_path))
-        return (file_path, json.loads(
-            subprocess.Popen([
+        pydatas = json.loads(
+            subprocess.run([
                 str(exe),
                 str(file_path),
                 str(self.teraMeshTilingFloat),
                 *[str(f) for f in self.teraMeshOffsetVector]
-            ], stdout=subprocess.PIPE).stdout.read().decode()))
+            ], stdout=subprocess.PIPE).stdout.decode())
+
+        print(f"Converting '{file_path}' to mesh.")
+
+        # Construct the blender mesh
+        for i, pydata in enumerate(pydatas):
+            # mesh = bpy.data.meshes.new(pydata.Name)
+            mesh = bpy.data.meshes.new(f"{file_path.stem}_{i}_{pydata['Name']}")
+            obj = bpy.data.objects.new(mesh.name, mesh)
+            bpy.context.collection.objects.link(obj)
+
+            # Flip some coordinates to account for BotW coordinate system
+            # vertices = [(v.X, -v.Z, v.Y) for v in pydata.Vertices]
+            vertices = [(v["X"], -v["Z"], v["Y"]) for v in pydata["Vertices"]]
+
+            # Import PyData
+            mesh.from_pydata(
+                vertices,
+                # pydata.Edges,
+                pydata["Edges"],
+                # pydata.Primitives,
+                pydata["Primitives"],
+            )
+
+            # if pydata.Name in ("hkpConvexVerticesShape", "hkpBoxShape"):
+            if pydata["Name"] in ("hkpConvexVerticesShape", "hkpBoxShape"):
+                bm = bmesh.new()
+                bm.from_mesh(mesh)
+                bmesh.ops.convex_hull(bm, input=bm.verts)
+                bm.to_mesh(mesh)
+                mesh.update()
+
+        print(f"Converting '{file_path.stem}' to mesh done!")
 
     def execute(self, context):
-        p = ThreadPool(len(self.files))
-        per_file_pydatas = p.map(self.read_pydata, self.files)
-
-        for (file_path, pydatas) in per_file_pydatas:
-            # Remove the collection if it exists
-            for col in bpy.data.collections:
-                if file_path.stem in col.name:
-                    bpy.data.collections.remove(col)
-
-            # Create a new collision with the name of the file
-            bpy.ops.collection.create(name=file_path.stem)
-            collection = bpy.data.collections[file_path.stem]
-            bpy.context.scene.collection.children.link(collection)
-
-            # Create a bmesh for convex hull creation
-            bm = bmesh.new()
-
-            for pydata in pydatas:
-                # Construct the blender mesh
-                # mesh = bpy.data.meshes.new(pydata.Name)
-                mesh = bpy.data.meshes.new(pydata["Name"])
-                obj = bpy.data.objects.new(mesh.name, mesh)
-                collection.objects.link(obj)
-                bpy.context.view_layer.objects.active = obj
-
-                # Flip some coordinates to account for BotW coordinate system
-                # vertices = [(v.X, -v.Z, v.Y) for v in pydata.Vertices]
-                vertices = [(v["X"], -v["Z"], v["Y"]) for v in pydata["Vertices"]]
-
-                # Import PyData
-                mesh.from_pydata(
-                    vertices,
-                    # pydata.Edges,
-                    pydata["Edges"],
-                    # pydata.Primitives,
-                    pydata["Primitives"],
-                )
-
-                # if pydata.Name in ("hkpConvexVerticesShape", "hkpBoxShape"):
-                if pydata["Name"] in ("hkpConvexVerticesShape", "hkpBoxShape"):
-                    bm.from_mesh(mesh)
-                    bmesh.ops.convex_hull(bm, input=bm.verts)
-                    bm.to_mesh(mesh)
-                    mesh.update()
-                    bm.clear()
+        with ThreadPoolExecutor() as executor:
+            executor.map(self.convert, self.files)
 
         self.report({"INFO"}, "Collision import finished!")
+        print("Collision import finished!")
         return {"FINISHED"}
 
 
