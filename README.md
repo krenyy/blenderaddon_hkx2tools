@@ -1,1 +1,1 @@
-# blenderaddon_hkx2tools
+# Superseded by [blenderaddon_hkx2](https://gitlab.com/HKX2/BlenderAddon)
